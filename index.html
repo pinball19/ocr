@@ -3,19 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>カメラOCR</title>
+    <title>精度向上版OCR</title>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4"></script>
 </head>
 <body>
-    <h1>カメラで撮影 → OCR</h1>
+    <h1>カメラで撮影 → OCR（高精度版）</h1>
     
-    <!-- カメラを起動するボタン -->
     <input type="file" accept="image/*" capture="environment" id="cameraInput">
     
-    <!-- 撮影した画像を表示 -->
     <canvas id="canvas" style="max-width: 100%;"></canvas>
     
-    <!-- OCR結果を表示 -->
     <p>OCR結果:</p>
     <pre id="output"></pre>
 
@@ -29,17 +26,37 @@
                 const img = new Image();
                 img.src = reader.result;
                 img.onload = function() {
-                    // 画像をCanvasに描画
+                    // 📌 画像の前処理
                     const canvas = document.getElementById('canvas');
                     const ctx = canvas.getContext('2d');
-                    canvas.width = img.width / 2; // 画像サイズを縮小（読み取り精度向上）
-                    canvas.height = img.height / 2;
+
+                    // 画像の適切な縮小（OCR精度向上）
+                    const scaleFactor = Math.min(1000 / img.width, 1000 / img.height); // 最大1000px
+                    canvas.width = img.width * scaleFactor;
+                    canvas.height = img.height * scaleFactor;
+                    
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                    // OCR処理を実行
+                    // グレースケール化
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                        data[i] = avg;    // R
+                        data[i + 1] = avg; // G
+                        data[i + 2] = avg; // B
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+
+                    // OCR処理（パラメータ調整）
                     Tesseract.recognize(
-                        canvas.toDataURL(), 'jpn', // 日本語OCR
-                        { logger: m => console.log(m) }
+                        canvas.toDataURL(), 'jpn',
+                        {
+                            logger: m => console.log(m),
+                            tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+                            tessedit_pageseg_mode: 6, // PSM: 単一のブロック内のテキスト（手書きに強い）
+                            oem: 1 // OCRエンジンのモード（LSTM使用）
+                        }
                     ).then(({ data: { text } }) => {
                         document.getElementById('output').innerText = text;
                     });
